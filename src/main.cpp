@@ -24,7 +24,7 @@ int main() {
 	// testing the CTM in CPU
 	CellTransModel model;
 	initialModel(model);
-	float lens[]= {31,10,40,45,10,42,45,40};
+	float lens[]= {31,10,40,45,10,42,48,51};
 	startSim(model,lens);
 	printLens(lens);
 	float c = 90;

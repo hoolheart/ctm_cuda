@@ -68,7 +68,8 @@ __global__ void calPosFlow(CELL *ListCell, float *CellPosIn, float *CellPosOut, 
 		switch (ListCell[i].type) {
 		case CELL_TYPE_INPUT:
 			CellPosIn[i] = 0;
-			CellPosOut[i] = ListCell[i].rate*dt;
+			ListCell[i].length += ListCell[i].rate*dt;
+			CellPosOut[i] = ListCell[i].length;
 			break;
 		case CELL_TYPE_OUTPUT:
 			CellPosIn[i] = ListCell[i].rate*dt;
