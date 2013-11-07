@@ -14,8 +14,8 @@
 
 #define BLOCK_SIZE 256
 
-CELL *dCells;
-LINK *dLinks;
+CtmCell *dCells;
+CtmLink *dLinks;
 float *dPosIn;
 float *dPosOut;
 float *dIn;
@@ -52,16 +52,15 @@ __device__ float mid(float d1, float d2, float d3) {
 	}
 }
 
-__global__ void updateAccess(CELL *c, int *a, int n) {
+__global__ void updateAccess(CtmCell *c, int *a, int n) {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (i < n)
-        c[i].access = a[i];
+    if (i < n) {}
 
     __syncthreads();
 }
 
-__global__ void calPosFlow(CELL *ListCell, float *CellPosIn, float *CellPosOut, float dt, int n) {
+__global__ void calPosFlow(CtmCell *ListCell, float *CellPosIn, float *CellPosOut, float dt, int n) {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (i<n) {
@@ -76,11 +75,8 @@ __global__ void calPosFlow(CELL *ListCell, float *CellPosIn, float *CellPosOut, 
 			CellPosOut[i] = 0;
 			break;
 		case CELL_TYPE_NORMAL:
-		case CELL_TYPE_SWITCH:
+			break;
 		default:
-			float maxFlow = ListCell[i].rate*dt;
-			CellPosIn[i] = min(maxFlow,ListCell[i].capacity-ListCell[i].length);
-			CellPosOut[i] = min(maxFlow,ListCell[i].length)*ListCell[i].access;
 			break;
 		}
     }
@@ -89,8 +85,8 @@ __global__ void calPosFlow(CELL *ListCell, float *CellPosIn, float *CellPosOut, 
 }
 
 __global__ void calFlow(
-		CELL *ListCell,
-		LINK *ListLink,
+		CtmCell *ListCell,
+		CtmLink *ListLink,
 		float *CellPosIn,
 		float *CellPosOut,
 		float *CellIn,
@@ -100,36 +96,13 @@ __global__ void calFlow(
 	if (i<n)
 		CellOut[i] = 0;
 	if (i<n) {
-		if (ListCell[i].type!=CELL_TYPE_INPUT) {
-			if (ListLink[i].p==1) {
-				float f = min(CellPosIn[i],CellPosOut[ListLink[i].c1]*ListLink[i].p1);
-				CellIn[i] = f;
-				CellOut[ListLink[i].c1] += f;
-			}
-			else {
-				float r = CellPosIn[i];
-				float s1 = CellPosOut[ListLink[i].c1]*ListLink[i].p1;
-				float s2 = CellPosOut[ListLink[i].c2]*ListLink[i].p2;
-				float f1, f2;
-				if (r>=(s1+s2)) {
-					f1 = s1; f2 = s2;
-				}
-				else {
-					f1 = mid(s1, r-s2, r*ListLink[i].p);
-					f2 = mid(s2, r-s1, r*(1-ListLink[i].p));
-				}
-				CellIn[i] = f1+f2;
-				CellOut[ListLink[i].c1] += f1;
-				CellOut[ListLink[i].c2] += f2;
-			}
-		}
 	}
 
     __syncthreads();
 }
 
 __global__ void updateCells(
-		CELL *ListCell,
+		CtmCell *ListCell,
 		float *CellIn,
 		float *CellOut,
 		int n) {
@@ -150,8 +123,8 @@ void deleteCudaEnv() {
 }
 
 void createCudaEnv(
-		CELL *hCells,
-		LINK *hLinks,
+		CtmCell *hCells,
+		CtmLink *hLinks,
 		float *hPosIn,
 		float *hPosOut,
 		float *hIn,
@@ -162,12 +135,12 @@ void createCudaEnv(
 
     // Create CUDA variables
     numCells = n;
-    err = cudaMalloc((void **)&dCells, n*sizeof(CELL));
+    err = cudaMalloc((void **)&dCells, n*sizeof(CtmCell));
     if (err != cudaSuccess) {
         fprintf(stderr, "Failed to allocate device data (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
-    err = cudaMalloc((void **)&dLinks, n*sizeof(LINK));
+    err = cudaMalloc((void **)&dLinks, n*sizeof(CtmLink));
     if (err != cudaSuccess) {
         fprintf(stderr, "Failed to allocate device data (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
@@ -194,12 +167,12 @@ void createCudaEnv(
     }
 
     // Copy host data to device
-    err = cudaMemcpy(dCells, hCells, n*sizeof(CELL), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(dCells, hCells, n*sizeof(CtmCell), cudaMemcpyHostToDevice);
     if (err != cudaSuccess)     {
         fprintf(stderr, "Failed to copy host data to device (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
-    err = cudaMemcpy(dLinks, hLinks, n*sizeof(LINK), cudaMemcpyHostToDevice);
+    err = cudaMemcpy(dLinks, hLinks, n*sizeof(CtmLink), cudaMemcpyHostToDevice);
     if (err != cudaSuccess)     {
         fprintf(stderr, "Failed to copy host data to device (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
@@ -226,7 +199,7 @@ void createCudaEnv(
     }
 }
 
-void updateCudaAcc(CELL *hCells) {
+void updateCudaAcc(CtmCell *hCells) {
 	// Error code to check return values for CUDA calls
     cudaError_t err = cudaSuccess;
 
@@ -244,9 +217,7 @@ void updateCudaAcc(CELL *hCells) {
     }
 
     // Initialize the host access data
-    for (int i = 0; i < numCells; ++i)
-    {
-        h_A[i] = hCells[i].access;
+    for (int i = 0; i < numCells; ++i) {
     }
 
     // Allocate the device access data
@@ -281,12 +252,12 @@ void updateCudaAcc(CELL *hCells) {
     free(h_A);
 }
 
-void loadCudaLen(CELL *hCells) {
+void loadCudaLen(CtmCell *hCells) {
 	// Error code to check return values for CUDA calls
     cudaError_t err = cudaSuccess;
 
     // Copy the device cell data to the host
-    err = cudaMemcpy(hCells, dCells, numCells*sizeof(CELL), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(hCells, dCells, numCells*sizeof(CtmCell), cudaMemcpyDeviceToHost);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to copy cell data from device to host (error code %s)!\n", cudaGetErrorString(err));

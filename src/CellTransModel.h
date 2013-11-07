@@ -9,74 +9,78 @@
 #define CELLTRANSMODEL_H_
 #include <string>
 #include <sstream>
-using namespace std;
-
-/*#define CELL_TYPE_NORMAL 0
-#define CELL_TYPE_INPUT 1
-#define CELL_TYPE_OUTPUT 2
-#define CELL_TYPE_SWITCH 3
-
-typedef struct Cell {
-	int type;
-	float capacity;
-	float length;
-	float rate;
-	int access;
-}CELL;
-
-//#define LINK_TYPE_STRAIGHT 0
-//#define LINK_TYPE_MERGE 1
-//#define LINK_TYPE_DIVERGE 2
-
-typedef struct Link {
-	float p;
-	int c1;
-	float p1;
-	int c2;
-	float p2;
-}LINK;*/
-
 #include "ctm_cuda.h"
+using namespace std;
 
 class CellTransModel {
 private:
-	CELL *ListCell;
-	LINK *ListLink;
-	float *CellPosIn;
-	float *CellPosOut;
-	float *CellIn;
-	float *CellOut;
-	int n;
-	string err;
-	bool isSimOn;
+    vector<CtmCell *> list_cells;
+    vector<CtmLink *> list_links;
+    vector<double> list_pos_in,list_pos_out,list_in,list_out;
+    CtmInfo info;
+    vector<CtmLane *> list_lanes;
+    vector<CtmIntersection *> list_ints;
 public:
-	CellTransModel();
-	CellTransModel(int _n);
-	virtual ~CellTransModel();
-	string getErr() const {return err;}
-	void cleanErr() {err="";}
-	string getErrClean() {
-		string t = err;
-		err = "";
-		return t;
-	}
-	void resetModel();
-	bool initialModel(int _n, float _cap=10, float _s=0.5);
-	bool setCell(int i, int _type, float _cap, float _s);
-	bool setLink(int i, float _p, int _c1, float _p1=1, int _c2=0, float _p2=0);
-	bool startSim(float const _len[], int const _acc[]);
-	bool sim(float dt, int steps=1);
-	bool changeAccess(int i, int _acc);
-	bool changeAccesses(int const _acc[]);
-	bool getCurrentLengths(float _len[]);
-	void stopSim();
-	bool resumeSim();
+    CellTransModel();
+    virtual ~CellTransModel();
+    bool sim(double dt, int steps=1);
+    void resetSystem(double vf, double w, double veh_len, double pos_dt);
+    int addLane(const string &id, int type, double cap,
+            double sat_rate, double in_rate, double out_ratio);
+    CtmLane * getLaneById(string id) {
+    	for (int i=0;i<(int)list_lanes.size();i++)
+    		if (list_lanes[i]->id==id) return list_lanes[i];
+    	return (CtmLane *)0;
+    }
+    int getLaneIndexById(string id) {
+    	for (int i=0;i<(int)list_lanes.size();i++)
+    		if (list_lanes[i]->id==id) return i;
+    	return -1;
+    }
+    int addIntersection(string id,const vector<string> &in_lanes,
+    		const vector<string> &out_lanes,
+            int n_inner,double inner_cells[][2]);
+    CtmIntersection * getIntersectionById(string id) {
+    	for (int i=0;i<(int)list_ints.size();i++)
+    		if (list_ints[i]->id==id) return list_ints[i];
+    	return (CtmIntersection *)0;
+    }
+    int getIntersectionIndexById(string id) {
+    	for (int i=0;i<(int)list_ints.size();i++)
+    		if (list_ints[i]->id==id) return i;
+    	return -1;
+    }
+    bool addPhase(string id,int n_links,double info[][8]);
+    bool buildCTM();
+    bool checkCells();
+    bool checkPhases();
+    bool startSim();
+    bool setLaneQueue(int i,double x);
+    bool setLaneQueue(string id,double x);
+    bool setIntersectionPhase(int i,int p);
+    bool setIntersectionPhase(string id,int p);
+    bool startSim(const vector<double> &x,const vector<int> &p);
+    bool stopSim();
+    bool cleanAllCells();
+    bool addInputs(const vector<double> &in);
+    bool modifyLaneInRate(string id,double r);
+    bool modifyLaneSatRate(string id,double r);
+    bool modifyLaneOutRatio(string id,double r);
+    bool switchIntersection(string id);
+    bool readCells(vector<double> &tar);
+    bool readLanes(vector<double> &tar);
+    bool readPhases(vector<int> &tar);
+    bool readLaneDelays(vector<double> &tar);
+    double readTotalDelay();
+    void resetDelay();
 private:
-	void calPosFlows(float dt);
-	void calRealFlows();
-	bool updateCells();
-	float min(float d1, float d2);
-	float mid(float d1, float d2, float d3);
+    void calPosFlows(double dt);
+    void calRealFlows();
+    bool updateCells(double dt);
+    double min(double d1, double d2);
+    double mid(double d1, double d2, double d3);
+    void modelingLane(CtmLane *l);
+    void modelingIntersection(CtmIntersection *l);
 };
 
 #endif /* CELLTRANSMODEL_H_ */
