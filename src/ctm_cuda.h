@@ -17,10 +17,10 @@ using namespace std;
 
 typedef struct ctm_cell {
 	int type;
-	double rate;
-	double cap;
-	double length;
-	double delay;
+	float rate;
+	float cap;
+	float length;
+	float delay;
 }CtmCell;
 
 #define LINK_TYPE_DIRECT 0
@@ -30,7 +30,7 @@ typedef struct ctm_cell {
 typedef struct ctm_link {
 	int type;
 	int cells[3];
-	double ratio;
+	float ratio;
 	bool access;
 }CtmLink;
 
@@ -38,10 +38,11 @@ class CtmInfo {
 public:
 	bool is_valid;
 	bool is_sim_on;
-	double vf;
-	double w_vf;
-	double veh_len;
-	double cell_cap;
+	bool is_synchronized;
+	float vf;
+	float w_vf;
+	float veh_len;
+	float cell_cap;
 };
 
 #define LANE_TYPE_NORMAL 0
@@ -52,10 +53,10 @@ class CtmLane {
 public:
 	string id;
 	int type;
-	double cap;
-	double sat_rate;
-	double in_rate;
-	double out_ratio;
+	float cap;
+	float sat_rate;
+	float in_rate;
+	float out_ratio;
 	int in_cell;
 	int out_cell;
 	int o_cell;
@@ -68,13 +69,13 @@ public:
 
 class CtmInnerCell {
 public:
-	double cap;
-	double sat_rate;
+	float cap;
+	float sat_rate;
 	int index;
 	CtmInnerCell() {
 		cap = 0; sat_rate = 0; index = -1;
 	}
-	CtmInnerCell(double _cap,double _rate) {
+	CtmInnerCell(float _cap,float _rate) {
 		cap = _cap;
 		sat_rate = _rate;
 		index = -1;
@@ -83,7 +84,7 @@ public:
 
 typedef struct ctm_link_info {
 	int type;
-	double ratio;
+	float ratio;
 	int c1s;
 	int c1i;
 	int c2s;
@@ -119,17 +120,23 @@ public:
 	}
 };
 
-void deleteCudaEnv();
+// create and destroy the CUDA environment for CTM simulation
 void createCudaEnv(
-		CtmCell *hCells,
-		CtmLink *hLinks,
-		float *hPosIn,
-		float *hPosOut,
-		float *hIn,
-		float *hOut,
-		int n);
-void updateCudaAcc(CtmCell *hCells);
-void loadCudaLen(CtmCell *hCells);
-bool simCuda(float dt);
+		CtmCell *hCells, int n_cell,
+		CtmLink *hLinks, int n_link);
+void deleteCudaEnv();
+
+// data import and export
+void loadCudaCells(CtmCell *hCells);
+void loadCudaCells(int begin,int len,CtmCell *hCells);
+void loadCudaLinks(CtmLink *hLinks);
+void loadCudaLinks(int begin,int len,CtmLink *hLinks);
+void saveCudaCells(CtmCell *hCells);
+void saveCudaLinks(CtmLink *hLinks);
+
+// simulation
+bool simCuda(float w_vf,float veh_len,float vf,float dt);
+void clearCudaDelay();
+void updateCudaAcc(int begin,int end,bool acc);
 
 #endif /* CTM_CUDA_H_ */

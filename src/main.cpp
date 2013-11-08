@@ -12,9 +12,9 @@ using namespace std;
 #include "CellTransModel.h"
 
 void initialModel(CellTransModel &mdl);
-void startSim(CellTransModel &mdl, double lens[]);
-void printLens(vector<double> lens);
-void simOneCycle(CellTransModel &mdl, double c, double g1, double g2, vector<double> &lens);
+void startSim(CellTransModel &mdl, float lens[]);
+void printLens(vector<float> lens);
+void simOneCycle(CellTransModel &mdl, float c, float g1, float g2, vector<float> &lens);
 
 int main() {
 	cout << "Hello World!" << endl; // prints Hello World!
@@ -22,12 +22,12 @@ int main() {
 	// testing the CTM in CPU
 	CellTransModel model;
 	initialModel(model);
-	double lens[]= {31,10,40,45,10,42,48,51};
+	float lens[]= {31,10,40,45,10,42,48,51};
 	startSim(model,lens);
-	vector<double> lengths;
+	vector<float> lengths;
 	model.readLanes(lengths);
 	printLens(lengths);
-	double c = 90;
+	float c = 90;
 	simOneCycle(model,c,45,45,lengths);
 	printLens(lengths);
 	simOneCycle(model,c,45,45,lengths);
@@ -63,12 +63,12 @@ void initialModel(CellTransModel &mdl) {
 	mdl.addLane("LE6",LANE_TYPE_EXIT,0,0,0,1);
 	// intersections
 	vector<string> in_lanes, out_lanes;
-	double inner_cells[2][2] = {{2,0.6},{2,0.6}};
-	double phase1[4][8] = {{LINK_TYPE_DIRECT, 1, 1,0, 0,0,0,0},
+	float inner_cells[2][2] = {{2,0.6},{2,0.6}};
+	float phase1[4][8] = {{LINK_TYPE_DIRECT, 1, 1,0, 0,0,0,0},
 			{LINK_TYPE_DIRECT, 1, 0,0, 2,0,0,0},
 			{LINK_TYPE_DIRECT, 1, 1,1, 0,1,0,0},
 			{LINK_TYPE_DIRECT, 1, 0,1, 2,1,0,0}};
-	double phase2[4][8] = {{LINK_TYPE_DIRECT, 1, 1,2, 0,0,0,0},
+	float phase2[4][8] = {{LINK_TYPE_DIRECT, 1, 1,2, 0,0,0,0},
 			{LINK_TYPE_DIRECT, 1, 0,0, 2,2,0,0},
 			{LINK_TYPE_DIRECT, 1, 1,3, 0,1,0,0},
 			{LINK_TYPE_DIRECT, 1, 0,1, 2,3,0,0}};
@@ -97,8 +97,8 @@ void initialModel(CellTransModel &mdl) {
 		cout << "Failed to build CTM." << endl;
 }
 
-void startSim(CellTransModel &mdl, double lens[]) {
-	vector<double> lanes;
+void startSim(CellTransModel &mdl, float lens[]) {
+	vector<float> lanes;
 	for(int i=0;i<8;i++)
 		lanes.push_back(lens[i]);
 	for(int i=0;i<6;i++)
@@ -108,7 +108,7 @@ void startSim(CellTransModel &mdl, double lens[]) {
 	mdl.startSim(lanes,ints);
 }
 
-void printLens(vector<double> lens) {
+void printLens(vector<float> lens) {
 	cout << "queue lengths = ";
 	for (int i=0;i<7;i++)
 			cout << lens[i] << "\t";
@@ -116,10 +116,10 @@ void printLens(vector<double> lens) {
 }
 
 void simOneCycle(CellTransModel &mdl,
-		double c, double g1, double g2,
-		vector<double> &lens) {
+		float c, float g1, float g2,
+		vector<float> &lens) {
 	string s1,s2;
-	double t1,t2,t3;
+	float t1,t2,t3;
 	if (g1<g2) {
 		s1 = "I1";
 		s2 = "I2";
@@ -145,6 +145,8 @@ void simOneCycle(CellTransModel &mdl,
 	if (t1>1e-6)
 		mdl.sim(t1);
 	mdl.switchIntersection(s1);
+	mdl.readLanes(lens);
+	printLens(lens);
 
 	// step 2
 	if (t2>=1) {
@@ -156,6 +158,8 @@ void simOneCycle(CellTransModel &mdl,
 	if (t2>0)
 		mdl.sim(t2);
 	mdl.switchIntersection(s2);
+	mdl.readLanes(lens);
+	printLens(lens);
 
 	// step 3
 	if (t3>=1) {

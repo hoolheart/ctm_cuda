@@ -17,16 +17,8 @@ CellTransModel::CellTransModel() {
 }
 
 CellTransModel::~CellTransModel() {
-	for (int i=0;i<(int)list_cells.size();i++)
-		delete list_cells[i];
 	list_cells.clear();
-	for (int i=0;i<(int)list_links.size();i++)
-		delete list_links[i];
 	list_links.clear();
-	list_pos_in.clear();
-	list_pos_out.clear();
-	list_in.clear();
-	list_out.clear();
 
 	for (int i=0;i<(int)list_lanes.size();i++)
 		delete list_lanes[i];
@@ -37,7 +29,7 @@ CellTransModel::~CellTransModel() {
 	list_ints.clear();
 }
 
-bool CellTransModel::sim(double dt, int steps) {
+bool CellTransModel::sim(float dt, int steps) {
     if (!info.is_sim_on) {
 //        err = "The Simulation has not been started!";
         return false;
@@ -51,139 +43,23 @@ bool CellTransModel::sim(double dt, int steps) {
         return false;
     }
     for (int i=0;i<steps;i++) {
-        calPosFlows(dt);
-        calRealFlows();
-        if(!updateCells(dt))
+        if(!simCuda(info.w_vf,info.veh_len,info.vf,dt))
             return false;
+        info.is_synchronized = false;
     }
     return true;
 }
 
-void CellTransModel::calPosFlows(double dt) {
-	int n_cells = list_cells.size();
-    for (int i=0;i<n_cells;i++) {
-        list_in[i] = 0;
-        list_out[i] = 0;
-        switch (list_cells[i]->type) {
-        case CELL_TYPE_INPUT:
-            list_pos_in[i] = 0;
-            list_cells[i]->length += list_cells[i]->rate*dt;
-            list_pos_out[i] = list_cells[i]->length;
-            break;
-        case CELL_TYPE_OUTPUT:
-            list_pos_in[i] = std::numeric_limits<double>::max();
-            list_pos_out[i] = 0;
-            break;
-        case CELL_TYPE_NORMAL:
-        default:
-            double maxFlow = list_cells[i]->rate*dt;
-            list_pos_in[i] = min(maxFlow,info.w_vf*(list_cells[i]->cap-list_cells[i]->length));
-            list_pos_out[i] = min(maxFlow,list_cells[i]->length);
-            break;
-        }
-    }
-}
-
-double CellTransModel::min(double d1, double d2) {
-    if (d1<d2)
-        return d1;
-    else
-        return d2;
-}
-
-void CellTransModel::calRealFlows() {
-	int n_links = list_links.size();
-    for (int i=0;i<n_links;i++) {
-        if(list_links[i]->access) {
-        	int c1 = list_links[i]->cells[0], c2 = list_links[i]->cells[1], c3 = list_links[i]->cells[2];
-        	double b1 = list_links[i]->ratio; double b2 = 1-b1;
-            double f1,f2;
-            switch (list_links[i]->type) {
-            case LINK_TYPE_MERGE:
-                if (list_pos_in[c3]>=list_pos_out[c1]+list_pos_out[c2]) {
-                    f1 = list_pos_out[c1];
-                    f2 = list_pos_out[c2];
-                }
-                else {
-                    f1 = mid(list_pos_out[c1],list_pos_in[c3]-list_pos_out[c2],b1*list_pos_in[c3]);
-                    f2 = mid(list_pos_out[c2],list_pos_in[c3]-list_pos_out[c1],b2*list_pos_in[c3]);
-                }
-				list_out[c1] = f1;
-				list_out[c2] = f2;
-				list_in[c3] = f1+f2;
-                break;
-            case LINK_TYPE_DIVERGE:
-            	f1 = min(list_pos_out[c1],min(list_pos_in[c2]/b1,list_pos_in[c3]/b2));
-            	list_out[c1] = f1;
-            	list_in[c2] = f1*b1;
-            	list_in[c3] = f1*b2;
-                break;
-            case LINK_TYPE_DIRECT:
-            default:
-            	f1 = min(list_pos_out[c1],list_pos_in[c2]);
-            	list_out[c1] = f1;
-            	list_in[c2] = f1;
-                break;
-            }
-        }
-    }
-}
-
-double CellTransModel::mid(double d1, double d2, double d3) {
-    if (d1<=d2) {
-        if (d2<=d3)
-            return d2;
-        else {
-            if (d1<=d3)
-                return d3;
-            else
-                return d1;
-        }
-    }
-    else {
-        if (d1<=d3)
-            return d1;
-        else {
-            if (d2<=d3)
-                return d3;
-            else
-                return d2;
-        }
-    }
-}
-
-bool CellTransModel::updateCells(double dt) {
-	int n_cells = list_cells.size();
-    for (int i=0;i<n_cells;i++) {
-        if (list_in[i]>list_pos_in[i]+1e-6 || list_out[i]>list_pos_out[i]+1e-6) {
-//            ostringstream oss;
-//            oss << "Simulation failed with unknown reason in Cell " << i << "!";
-//            err = oss.str();
-            return false;
-        }
-        list_cells[i]->length += list_in[i]-list_out[i];
-        list_cells[i]->delay += dt*(list_cells[i]->length-list_out[i]*list_cells[i]->cap*info.veh_len/info.vf);
-    }
-    return true;
-}
-
-void CellTransModel::resetSystem(double vf,
-		double w,
-		double veh_len,
-		double pos_dt) {
-	for (int i=0;i<(int)list_cells.size();i++)
-		delete list_cells[i];
+void CellTransModel::resetSystem(float vf,
+		float w,
+		float veh_len,
+		float pos_dt) {
 	list_cells.clear();
-	for (int i=0;i<(int)list_links.size();i++)
-		delete list_links[i];
 	list_links.clear();
-	list_pos_in.clear();
-	list_pos_out.clear();
-	list_in.clear();
-	list_out.clear();
 
 	info.is_valid = false;
 	info.is_sim_on = false;
+	info.is_synchronized = false;
 	info.vf = vf;
 	info.w_vf = w/vf;
 	info.veh_len = veh_len;
@@ -200,10 +76,10 @@ void CellTransModel::resetSystem(double vf,
 
 int CellTransModel::addLane(const string &id,
 		int type,
-		double cap,
-		double sat_rate,
-		double in_rate,
-		double out_ratio) {
+		float cap,
+		float sat_rate,
+		float in_rate,
+		float out_ratio) {
 	if (info.is_sim_on) {
 		return -1;
 	}
@@ -247,7 +123,7 @@ int CellTransModel::addLane(const string &id,
 	case LANE_TYPE_EXIT:
 		isValid = true;
 		l->cap = 0;
-		l->sat_rate = std::numeric_limits<double>::max();
+		l->sat_rate = std::numeric_limits<float>::max();
 		l->in_rate = 0;
 		l->out_ratio = 1;
 		break;
@@ -268,7 +144,7 @@ int CellTransModel::addLane(const string &id,
 
 int CellTransModel::addIntersection(string id,const vector<string> &in_lanes,
 		const vector<string> &out_lanes,
-        int n_inner,double inner_cells[][2]) {
+        int n_inner,float inner_cells[][2]) {
 	if (info.is_sim_on) {
 			return -1;
 	}
@@ -298,7 +174,7 @@ int CellTransModel::addIntersection(string id,const vector<string> &in_lanes,
 	return list_ints.size()-1;
 }
 
-bool CellTransModel::addPhase(string id,int n_links,double info[][8]) {
+bool CellTransModel::addPhase(string id,int n_links,float info[][8]) {
 	int index = getIntersectionIndexById(id);
 	if (index<0 || index>=(int)list_ints.size()) {
 		return false;
@@ -331,16 +207,8 @@ bool CellTransModel::buildCTM() {
 	}
 
 	// clear the current CTM
-	for (int i=0;i<(int)list_cells.size();i++)
-		delete list_cells[i];
 	list_cells.clear();
-	for (int i=0;i<(int)list_links.size();i++)
-		delete list_links[i];
 	list_links.clear();
-	list_pos_in.clear();
-	list_pos_out.clear();
-	list_in.clear();
-	list_out.clear();
 
 	// build new CTM
 	for (int i=0;i<(int)list_lanes.size();i++) {
@@ -349,10 +217,6 @@ bool CellTransModel::buildCTM() {
 	for (int i=0;i<(int)list_ints.size();i++) {
 		modelingIntersection(list_ints[i]);
 	}
-	list_pos_in = vector<double>(list_cells.size(),0);
-	list_pos_out = vector<double>(list_cells.size(),0);
-	list_in = vector<double>(list_cells.size(),0);
-	list_out = vector<double>(list_cells.size(),0);
 	info.is_valid = true;
 	return true;
 }
@@ -361,42 +225,37 @@ void CellTransModel::modelingLane(CtmLane *l) {
 	int n_cells = (int)list_cells.size();
 	int n_links = (int)list_links.size();
 	int n;
-	CtmCell *c;
-	CtmLink *k;
+	CtmCell c;
+	CtmLink k;
 	switch (l->type) {
 	case LANE_TYPE_NORMAL:
 		n = (l->cap<3*info.cell_cap)?3:(int)round(l->cap/info.cell_cap);
 		for (int i=0;i<n;i++) {
-			c = new CtmCell;
-			c->type = CELL_TYPE_NORMAL;
-			c->cap = l->cap/n;
-			c->rate = l->sat_rate;
-			c->delay = 0;
-			c->length = 0;
+//			c = new CtmCell;
+			c.type = CELL_TYPE_NORMAL;
+			c.cap = l->cap/n;
+			c.rate = l->sat_rate;
+			c.delay = 0;
+			c.length = 0;
 			list_cells.push_back(c);
 		}
-		c = new CtmCell;
-		c->type = CELL_TYPE_INPUT;
-		c->cap = numeric_limits<double>::max(); c->rate = l->in_rate;
-		c->delay = 0; c->length = 0;
+		c.type = CELL_TYPE_INPUT;
+		c.cap = numeric_limits<float>::max(); c.rate = l->in_rate;
+		c.delay = 0; c.length = 0;
 		list_cells.push_back(c);
-		c = new CtmCell;
-		c->type = CELL_TYPE_OUTPUT;
-		c->cap = numeric_limits<double>::max(); c->rate = numeric_limits<double>::max();
-		c->delay = 0; c->length = 0;
+		c.type = CELL_TYPE_OUTPUT;
+		c.cap = numeric_limits<float>::max(); c.rate = numeric_limits<float>::max();
+		c.delay = 0; c.length = 0;
 		list_cells.push_back(c);
-		k = new CtmLink;
-		k->type = LINK_TYPE_DIVERGE; k->cells[0] = n_cells; k->cells[1] = n_cells+1; k->cells[2] = n_cells+n+1;
-		k->ratio = 1-l->out_ratio; k->access = true;
+		k.type = LINK_TYPE_DIVERGE; k.cells[0] = n_cells; k.cells[1] = n_cells+1; k.cells[2] = n_cells+n+1;
+		k.ratio = 1-l->out_ratio; k.access = true;
 		list_links.push_back(k);
-		k = new CtmLink;
-		k->type = LINK_TYPE_MERGE; k->cells[0] = n_cells+1; k->cells[1] = n_cells+n; k->cells[2] = n_cells+2;
-		k->ratio = l->sat_rate/(l->sat_rate+l->in_rate); k->access = true;
+		k.type = LINK_TYPE_MERGE; k.cells[0] = n_cells+1; k.cells[1] = n_cells+n; k.cells[2] = n_cells+2;
+		k.ratio = l->sat_rate/(l->sat_rate+l->in_rate); k.access = true;
 		list_links.push_back(k);
 		for (int i=2;i<n-1;i++) {
-			k = new CtmLink;
-			k->type = LINK_TYPE_DIRECT; k->cells[0] = n_cells+i; k->cells[1] = n_cells+i+1; k->cells[2] = -1;
-			k->ratio = 1; k->access = true;
+			k.type = LINK_TYPE_DIRECT; k.cells[0] = n_cells+i; k.cells[1] = n_cells+i+1; k.cells[2] = -1;
+			k.ratio = 1; k.access = true;
 			list_links.push_back(k);
 		}
 		l->o_cell = n_cells; l->d_cell = n_cells+n-1;
@@ -405,24 +264,21 @@ void CellTransModel::modelingLane(CtmLane *l) {
 		break;
 	case LANE_TYPE_ENTRY:
 		n = (int)round(l->cap/info.cell_cap);
-		c = new CtmCell;
-		c->type = CELL_TYPE_INPUT;
-		c->cap = numeric_limits<double>::max(); c->rate = l->in_rate;
-		c->delay = 0; c->length = 0;
+		c.type = CELL_TYPE_INPUT;
+		c.cap = numeric_limits<float>::max(); c.rate = l->in_rate;
+		c.delay = 0; c.length = 0;
 		list_cells.push_back(c);
 		for (int i=0;i<n;i++) {
-			c = new CtmCell;
-			c->type = CELL_TYPE_NORMAL;
-			c->cap = l->cap/n;
-			c->rate = l->sat_rate;
-			c->delay = 0;
-			c->length = 0;
+			c.type = CELL_TYPE_NORMAL;
+			c.cap = l->cap/n;
+			c.rate = l->sat_rate;
+			c.delay = 0;
+			c.length = 0;
 			list_cells.push_back(c);
 		}
 		for (int i=0;i<n;i++) {
-			k = new CtmLink;
-			k->type = LINK_TYPE_DIRECT; k->cells[0] = n_cells+i; k->cells[1] = n_cells+i+1; k->cells[2] = -1;
-			k->ratio = 1; k->access = true;
+			k.type = LINK_TYPE_DIRECT; k.cells[0] = n_cells+i; k.cells[1] = n_cells+i+1; k.cells[2] = -1;
+			k.ratio = 1; k.access = true;
 			list_links.push_back(k);
 		}
 		l->o_cell = n_cells+1; l->d_cell = n_cells+n;
@@ -430,10 +286,9 @@ void CellTransModel::modelingLane(CtmLane *l) {
 		l->in_link = n_links; l->out_link = -1;
 		break;
 	case LANE_TYPE_EXIT:
-		c = new CtmCell;
-		c->type = CELL_TYPE_OUTPUT;
-		c->cap = numeric_limits<double>::max(); c->rate = numeric_limits<double>::max();
-		c->delay = 0; c->length = 0;
+		c.type = CELL_TYPE_OUTPUT;
+		c.cap = numeric_limits<float>::max(); c.rate = numeric_limits<float>::max();
+		c.delay = 0; c.length = 0;
 		list_cells.push_back(c);
 		l->o_cell = -1; l->d_cell = -1;
 		l->in_cell = -1; l->out_cell = n_cells;
@@ -455,18 +310,17 @@ void CellTransModel::modelingIntersection(CtmIntersection *l) {
 	for (int i=0;i<(int)l->out_lanes.size();i++) {
 		l->out_cells.push_back(l->out_lanes[i]->getHeadCell());
 	}
-	CtmCell *c;
+	CtmCell c;
 	for (int i=0;i<(int)l->inner_cells.size();i++) {
-		c = new CtmCell;
-		c->type = CELL_TYPE_NORMAL;
-		c->cap = l->inner_cells[i]->cap;
-		c->rate = l->inner_cells[i]->sat_rate;
-		c->delay = 0;
-		c->length = 0;
+		c.type = CELL_TYPE_NORMAL;
+		c.cap = l->inner_cells[i]->cap;
+		c.rate = l->inner_cells[i]->sat_rate;
+		c.delay = 0;
+		c.length = 0;
 		list_cells.push_back(c);
 		l->inner_cells[i]->index = (int)list_cells.size()-1;
 	}
-	CtmLink *k;
+	CtmLink k;
 	for (int i=0;i<(int)l->phases.size();i++) {
 		CtmPhase *p = l->phases[i];
 		if(p->info.empty()) {
@@ -475,31 +329,30 @@ void CellTransModel::modelingIntersection(CtmIntersection *l) {
 			continue;
 		}
 		for (int j=0;j<(int)p->info.size();j++) {
-			k = new CtmLink;
-			k->access = false;
-			k->type = p->info[j].type;
+			k.access = false;
+			k.type = p->info[j].type;
 			switch (p->info[j].c1s) {
 			case 0:
-				k->cells[0] = l->inner_cells[p->info[j].c1i]->index;
+				k.cells[0] = l->inner_cells[p->info[j].c1i]->index;
 				break;
 			case 1:
-				k->cells[0] = l->in_cells[p->info[j].c1i];
+				k.cells[0] = l->in_cells[p->info[j].c1i];
 				break;
 			case 2:
 			default:
-				k->cells[0] = l->out_cells[p->info[j].c1i];
+				k.cells[0] = l->out_cells[p->info[j].c1i];
 				break;
 			}
 			switch (p->info[j].c2s) {
 			case 0:
-				k->cells[1] = l->inner_cells[p->info[j].c2i]->index;
+				k.cells[1] = l->inner_cells[p->info[j].c2i]->index;
 				break;
 			case 1:
-				k->cells[1] = l->in_cells[p->info[j].c2i];
+				k.cells[1] = l->in_cells[p->info[j].c2i];
 				break;
 			case 2:
 			default:
-				k->cells[1] = l->out_cells[p->info[j].c2i];
+				k.cells[1] = l->out_cells[p->info[j].c2i];
 				break;
 			}
 			switch (p->info[j].type) {
@@ -507,23 +360,23 @@ void CellTransModel::modelingIntersection(CtmIntersection *l) {
 			case LINK_TYPE_DIVERGE:
 				switch (p->info[j].c3s) {
 				case 0:
-					k->cells[2] = l->inner_cells[p->info[j].c3i]->index;
+					k.cells[2] = l->inner_cells[p->info[j].c3i]->index;
 					break;
 				case 1:
-					k->cells[2] = l->in_cells[p->info[j].c3i];
+					k.cells[2] = l->in_cells[p->info[j].c3i];
 					break;
 				case 2:
 				default:
-					k->cells[2] = l->out_cells[p->info[j].c3i];
+					k.cells[2] = l->out_cells[p->info[j].c3i];
 					break;
 				}
-				k->ratio = p->info[j].ratio;
+				k.ratio = p->info[j].ratio;
 				break;
 			case LINK_TYPE_DIRECT:
 			default:
-				k->type = LINK_TYPE_DIRECT;
-				k->cells[2] = -1;
-				k->ratio = 1;
+				k.type = LINK_TYPE_DIRECT;
+				k.cells[2] = -1;
+				k.ratio = 1;
 				break;
 			}
 			list_links.push_back(k);
@@ -537,7 +390,7 @@ void CellTransModel::modelingIntersection(CtmIntersection *l) {
 bool CellTransModel::checkCells() {
 	if(info.is_valid) {
 		for(int i=0;i<(int)list_cells.size();i++) {
-			if(list_cells[i]->length<0 || list_cells[i]->length>list_cells[i]->cap)
+			if(list_cells[i].length<0 || list_cells[i].length>list_cells[i].cap)
 				return false;
 		}
 		return true;
@@ -565,14 +418,16 @@ bool CellTransModel::startSim() {
 	if(info.is_sim_on)
 		return true;
 	if(checkCells()&&checkPhases()) {
+		createCudaEnv(list_cells.data(),list_cells.size(),list_links.data(),list_links.size());
 		info.is_sim_on = true;
+		info.is_synchronized = true;
 		return true;
 	}
 	else
 		return false;
 }
 
-bool CellTransModel::setLaneQueue(int i,double x) {
+bool CellTransModel::setLaneQueue(int i,float x) {
 	if(!info.is_valid)
 		return false;
 	if(info.is_sim_on)
@@ -584,18 +439,15 @@ bool CellTransModel::setLaneQueue(int i,double x) {
 
 	CtmLane * l = list_lanes[i];
 	x = (x>0)?x:0; x = (x<l->cap)?x:l->cap;
-	//int n = l->d_cell-l->o_cell+1;
-	CtmCell *c;
 	for (int j=l->d_cell;j>=l->o_cell;j--) {
-		c = list_cells[j];
-		double clen = (x>c->cap)?c->cap:x;
-		c->length = clen;
+		float clen = (x>list_cells[j].cap)?list_cells[j].cap:x;
+		list_cells[j].length = clen;
 		x -= clen;
 	}
 	return true;
 }
 
-bool CellTransModel::setLaneQueue(string id,double x) {
+bool CellTransModel::setLaneQueue(string id,float x) {
 	int i = getLaneIndexById(id);
 	if (i<0)
 		return false;
@@ -619,10 +471,13 @@ bool CellTransModel::setIntersectionPhase(int i,int p) {
 		acc = (j==p);
 		f = l->phases[j];
 		for(int k=f->head_link;k<=f->tail_link;k++) {
-			list_links[k]->access = acc;
+			list_links[k].access = acc;
 		}
 	}
 	l->cur_phase = p;
+	if(info.is_sim_on) {
+		loadCudaLinks(list_links.data());
+	}
 	return true;
 }
 
@@ -634,7 +489,7 @@ bool CellTransModel::setIntersectionPhase(string id, int p) {
 		return setIntersectionPhase(i,p);
 }
 
-bool CellTransModel::startSim(const vector<double> &x,const vector<int> &p) {
+bool CellTransModel::startSim(const vector<float> &x,const vector<int> &p) {
 	if(!info.is_valid)
 		return false;
 	if(info.is_sim_on)
@@ -648,13 +503,19 @@ bool CellTransModel::startSim(const vector<double> &x,const vector<int> &p) {
 	for(int i=0;i<(int)list_ints.size();i++) {
 		setIntersectionPhase(i,p[i]);
 	}
+	createCudaEnv(list_cells.data(),list_cells.size(),list_links.data(),list_links.size());
 	info.is_sim_on = true;
+	info.is_synchronized = true;
 	return true;
 }
 
 bool CellTransModel::stopSim() {
 	if(!info.is_valid)
 		return false;
+	if(info.is_sim_on) {
+		saveCudaCells(list_cells.data());
+		deleteCudaEnv();
+	}
 	info.is_sim_on = false;
 	return true;
 }
@@ -664,15 +525,16 @@ bool CellTransModel::cleanAllCells() {
 		return false;
 
 	for(int i=0;i<(int)list_cells.size();i++) {
-		list_cells[i]->length = 0;
-		list_cells[i]->delay = 0;
+		list_cells[i].length = 0;
+		list_cells[i].delay = 0;
+	}
+	if(info.is_sim_on) {
+		loadCudaCells(list_cells.data());
 	}
 	return true;
 }
 
-bool CellTransModel::modifyLaneInRate(string id,double r) {
-	if(!info.is_valid)
-		return false;
+bool CellTransModel::modifyLaneInRate(string id,float r) {
 	int i = getLaneIndexById(id);
 	if(i<0 || i>=(int)list_lanes.size())
 		return false;
@@ -682,13 +544,19 @@ bool CellTransModel::modifyLaneInRate(string id,double r) {
 	CtmLane * l = list_lanes[i];
 	r = (r>0)?r:0;
 	l->in_rate = r;
-	list_cells[l->in_cell]->rate = r;
+	if(info.is_valid) {
+		if(info.is_sim_on && (!info.is_synchronized)) {
+			saveCudaCells(list_cells.data());
+			info.is_synchronized = true;
+		}
+		list_cells[l->in_cell].rate = r;
+		if(info.is_sim_on)
+			loadCudaCells(l->in_cell,1,list_cells.data());
+	}
 	return true;
 }
 
-bool CellTransModel::modifyLaneSatRate(string id,double r) {
-	if(!info.is_valid)
-		return false;
+bool CellTransModel::modifyLaneSatRate(string id,float r) {
 	int i = getLaneIndexById(id);
 	if(i<0 || i>=(int)list_lanes.size())
 		return false;
@@ -698,14 +566,20 @@ bool CellTransModel::modifyLaneSatRate(string id,double r) {
 	CtmLane * l = list_lanes[i];
 	r = (r>0)?r:0;
 	l->sat_rate = r;
-	for(int j=l->o_cell;j<=l->d_cell;j++)
-		list_cells[j]->rate = r;
+	if(info.is_valid) {
+		if(info.is_sim_on && (!info.is_synchronized)) {
+			saveCudaCells(list_cells.data());
+			info.is_synchronized = true;
+		}
+		for(int j=l->o_cell;j<=l->d_cell;j++)
+			list_cells[j].rate = r;
+		if(info.is_sim_on)
+			loadCudaCells(l->o_cell,l->d_cell-l->o_cell+1,list_cells.data());
+	}
 	return true;
 }
 
-bool CellTransModel::modifyLaneOutRatio(string id,double r) {
-	if(!info.is_valid)
-		return false;
+bool CellTransModel::modifyLaneOutRatio(string id,float r) {
 	int i = getLaneIndexById(id);
 	if(i<0 || i>=(int)list_lanes.size())
 		return false;
@@ -715,7 +589,11 @@ bool CellTransModel::modifyLaneOutRatio(string id,double r) {
 	CtmLane * l = list_lanes[i];
 	r = (r>0)?r:0; r = (r<1)?r:1;
 	l->out_ratio = r;
-	list_links[l->out_link]->ratio = 1-r;
+	if(info.is_valid) {
+		list_links[l->out_link].ratio = 1-r;
+		if(info.is_sim_on)
+			loadCudaLinks(l->out_link,1,list_links.data());
+	}
 	return true;
 }
 
@@ -732,38 +610,50 @@ bool CellTransModel::switchIntersection(string id) {
 		CtmPhase *f;
 		f = l->phases[p];
 		for(int k=f->head_link;k<=f->tail_link;k++) {
-			list_links[k]->access = false;
+			list_links[k].access = false;
 		}
+		if(info.is_sim_on)
+			updateCudaAcc(f->head_link,f->tail_link,false);
 		p++;
 		p = (p<(int)l->phases.size())?p:0;
 		f = l->phases[p];
 		for(int k=f->head_link;k<=f->tail_link;k++) {
-			list_links[k]->access = true;
+			list_links[k].access = true;
 		}
+		if(info.is_sim_on)
+			updateCudaAcc(f->head_link,f->tail_link,true);
 		l->cur_phase = p;
 	}
 	return true;
 }
 
-bool CellTransModel::readCells(vector<double> &tar) {
+bool CellTransModel::readCells(vector<float> &tar) {
 	if(!info.is_valid)
 		return false;
+	if(info.is_sim_on && (!info.is_synchronized)) {
+		saveCudaCells(list_cells.data());
+		info.is_synchronized = true;
+	}
 	tar.resize(list_cells.size());
 	for(int i=0;i<(int)list_cells.size();i++)
-		tar[i] = list_cells[i]->length;
+		tar[i] = list_cells[i].length;
 	return true;
 }
 
-bool CellTransModel::readLanes(vector<double> &tar) {
+bool CellTransModel::readLanes(vector<float> &tar) {
 	if(!info.is_valid)
 		return false;
+	if(info.is_sim_on && (!info.is_synchronized)) {
+		saveCudaCells(list_cells.data());
+		info.is_synchronized = true;
+	}
 	tar.resize(list_lanes.size());
 	for(int i=0;i<(int)list_lanes.size();i++) {
 		tar[i] = 0;
 		if(list_lanes[i]->type==LANE_TYPE_EXIT)
 			continue;
 		for(int j=list_lanes[i]->o_cell;j<=list_lanes[i]->d_cell;j++)
-			tar[i] += list_cells[j]->length;
+			tar[i] += list_cells[j].length;
 	}
 	return true;
 }
@@ -777,24 +667,28 @@ bool CellTransModel::readPhases(vector<int> &tar) {
 	return true;
 }
 
-bool CellTransModel::readLaneDelays(vector<double> &tar) {
+bool CellTransModel::readLaneDelays(vector<float> &tar) {
 	if(!info.is_valid)
 		return false;
+	if(info.is_sim_on && (!info.is_synchronized)) {
+		saveCudaCells(list_cells.data());
+		info.is_synchronized = true;
+	}
 	tar.resize(list_lanes.size());
 	for(int i=0;i<(int)list_lanes.size();i++) {
 		tar[i] = 0;
 		if(list_lanes[i]->type==LANE_TYPE_EXIT)
 			continue;
 		for(int j=list_lanes[i]->o_cell;j<=list_lanes[i]->d_cell;j++)
-			tar[i] += list_cells[j]->delay;
+			tar[i] += list_cells[j].delay;
 	}
 	return true;
 }
 
-double CellTransModel::readTotalDelay() {
-	vector<double> delays;
+float CellTransModel::readTotalDelay() {
+	vector<float> delays;
 	if(readLaneDelays(delays)) {
-		double total=0;
+		float total=0;
 		for(int i=0;i<(int)delays.size();i++)
 			total += delays[i];
 		return total;
@@ -804,6 +698,12 @@ double CellTransModel::readTotalDelay() {
 }
 
 void CellTransModel::resetDelay() {
+	if(info.is_sim_on && (!info.is_synchronized)) {
+		saveCudaCells(list_cells.data());
+		info.is_synchronized = true;
+	}
 	for (int i=0;i<(int)list_cells.size();i++)
-		list_cells[i]->delay = 0;
+		list_cells[i].delay = 0;
+	if(info.is_sim_on)
+		clearCudaDelay();
 }
