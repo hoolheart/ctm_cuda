@@ -15,6 +15,7 @@ void initialModel(CellTransModel &mdl);
 void startSim(CellTransModel &mdl, float lens[]);
 void printLens(vector<float> lens);
 void simOneCycle(CellTransModel &mdl, float c, float g1, float g2, vector<float> &lens);
+void simTest2(CellTransModel &mdl, vector<float> &lens);
 
 int main() {
 	cout << "Hello World!" << endl; // prints Hello World!
@@ -27,13 +28,14 @@ int main() {
 	vector<float> lengths;
 	model.readLanes(lengths);
 	printLens(lengths);
-	float c = 90;
-	simOneCycle(model,c,45,45,lengths);
-	printLens(lengths);
-	simOneCycle(model,c,45,45,lengths);
-	printLens(lengths);
-	simOneCycle(model,c,55,45,lengths);
-	printLens(lengths);
+//	float c = 90;
+//	simOneCycle(model,c,45,45,lengths);
+//	printLens(lengths);
+//	simOneCycle(model,c,45,45,lengths);
+//	printLens(lengths);
+//	simOneCycle(model,c,55,45,lengths);
+//	printLens(lengths);
+	simTest2(model,lengths);
 
 	string str;
 	cin >> str;
@@ -145,8 +147,6 @@ void simOneCycle(CellTransModel &mdl,
 	if (t1>1e-6)
 		mdl.sim(t1);
 	mdl.switchIntersection(s1);
-	mdl.readLanes(lens);
-	printLens(lens);
 
 	// step 2
 	if (t2>=1) {
@@ -158,8 +158,6 @@ void simOneCycle(CellTransModel &mdl,
 	if (t2>0)
 		mdl.sim(t2);
 	mdl.switchIntersection(s2);
-	mdl.readLanes(lens);
-	printLens(lens);
 
 	// step 3
 	if (t3>=1) {
@@ -173,4 +171,22 @@ void simOneCycle(CellTransModel &mdl,
 	mdl.switchIntersection("I1");mdl.switchIntersection("I2");
 
 	mdl.readLanes(lens);
+}
+
+void simTest2(CellTransModel &mdl, vector<float> &lens) {
+	double t1;
+
+	for(int i=0;i<9;i++) {
+		t1 = 5;
+		if (t1>=1) {
+			int sp = (int)floor(t1);
+			if (!mdl.sim(1.0,sp))
+				cout << "Simulation Error!" << endl;
+			t1 -= sp;
+		}
+		if (t1>1e-6)
+			mdl.sim(t1);
+		mdl.readLanes(lens);
+		printLens(lens);
+	}
 }
